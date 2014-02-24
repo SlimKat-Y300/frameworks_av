@@ -3163,7 +3163,7 @@ void OMXCodec::onStateChange(OMX_STATETYPE newState) {
                     }
 #endif
 
-                    if (mFlags & kEnableGrallocUsageProtected) {
+                    if ((mFlags & kEnableGrallocUsageProtected) &&
                         mNativeWindow != NULL) {
                         // We push enough 1x1 blank buffers to ensure that one of
                         // them has made it to the display.  This allows the OMX
