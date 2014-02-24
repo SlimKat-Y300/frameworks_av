@@ -489,26 +489,22 @@ sp<MediaSource> OMXCodec::Create(
             componentName = tmp.c_str();
         }
 
-        sp<MediaSource> softwareCodec;
         if (createEncoder) {
-            softwareCodec = InstantiateSoftwareEncoder(componentName, source, meta);
-#ifdef QCOM_HARDWARE
-        } else {
-            softwareCodec = InstantiateSoftwareDecoder(componentName, source);
-        }
-#endif
+            sp<MediaSource> softwareCodec =
+                InstantiateSoftwareEncoder(componentName, source, meta);
             if (softwareCodec != NULL) {
                 ALOGV("Successfully allocated software codec '%s'", componentName);
 
                 return softwareCodec;
             }
+        }
 
 #ifdef QCOM_HARDWARE
         const char* ext_componentName = ExtendedCodec::overrideComponentName(quirks, meta);
         if(ext_componentName != NULL) {
           componentName = ext_componentName;
-#endif
         }
+#endif
 
         ALOGV("Attempting to allocate OMX node '%s'", componentName);
 
@@ -669,10 +665,6 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
                 return err;
             }
 
-#ifdef QCOM_HARDWARE
-            ExtendedUtils::setArbitraryModeIfInterlaced((const uint8_t *)data, meta);
-#endif
-
             CODEC_LOGI(
                     "AVC profile = %u (%s), level = %u",
                     profile, AVCProfileToString(profile), level);
@@ -784,6 +776,10 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
                 return err;
             }
         } else {
+#ifdef QCOM_HARDWARE
+            ExtendedCodec::configureVideoDecoder(
+                    meta, mMIME, mOMX, mFlags, mNode, mComponentName);
+#endif
             status_t err = setVideoOutputFormat(
                     mMIME, meta);
 
@@ -792,8 +788,6 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
             }
 
 #ifdef QCOM_HARDWARE
-            ExtendedCodec::configureVideoDecoder(
-                    meta, mMIME, mOMX, mFlags, mNode, mComponentName);
             ExtendedCodec::configureFramePackingFormat(
                     meta, mOMX, mNode, mComponentName);
             ExtendedCodec::enableSmoothStreaming(
@@ -3170,6 +3164,7 @@ void OMXCodec::onStateChange(OMX_STATETYPE newState) {
 #endif
 
                     if (mFlags & kEnableGrallocUsageProtected) {
+                        mNativeWindow != NULL) {
                         // We push enough 1x1 blank buffers to ensure that one of
                         // them has made it to the display.  This allows the OMX
                         // component teardown to zero out any protected buffers
@@ -3469,12 +3464,7 @@ void OMXCodec::drainInputBuffers() {
                 break;
             }
 
-#ifdef QCOM_HARDWARE
-            if ((mFlags & kOnlySubmitOneInputBufferAtOneTime)
-                    && (i == mNumBFrames)) {
-#else
             if (mFlags & kOnlySubmitOneInputBufferAtOneTime) {
-#endif
                 break;
             }
         }
@@ -3577,11 +3567,6 @@ bool OMXCodec::drainInputBuffer(BufferInfo *info) {
 
     size_t offset = 0;
     int32_t n = 0;
-#ifdef QCOM_HARDWARE
-    int32_t InterlaceFormatDetected = false;
-    int32_t InterlaceFrameCount = 0;
-#endif
-
 
     for (;;) {
         MediaBuffer *srcBuffer;
@@ -3627,11 +3612,6 @@ bool OMXCodec::drainInputBuffer(BufferInfo *info) {
             mBufferFilled.signal();
             break;
         }
-
-#ifdef QCOM_HARDWARE
-        sp<MetaData> metaData = mSource->getFormat();
-        InterlaceFormatDetected = ExtendedUtils::checkIsInterlace(metaData);
-#endif
 
         if (mFlags & kUseSecureInputBuffers) {
             info = findInputBufferByDataPointer(srcBuffer->data());
@@ -3791,29 +3771,8 @@ bool OMXCodec::drainInputBuffer(BufferInfo *info) {
 
     OMX_U32 flags = OMX_BUFFERFLAG_ENDOFFRAME;
 
-#ifdef QCOM_HARDWARE
-    if(InterlaceFormatDetected) {
-        InterlaceFrameCount++;
-    }
-#endif
-
     if (signalEOS) {
         flags |= OMX_BUFFERFLAG_EOS;
-#ifdef QCOM_HARDWARE
-    } else if(ExtendedUtils::checkIsThumbNailMode(mFlags, mComponentName)
-                   && (!InterlaceFormatDetected || InterlaceFrameCount>= 2)) {
-        // Because we don't get an EOS after getting the first frame, we
-        // need to notify the component with OMX_BUFFERFLAG_EOS, set
-        // mNoMoreOutputData to false so fillOutputBuffer gets called on
-        // the first output buffer (see comment in fillOutputBuffer), and
-        // mSignalledEOS must be true so drainInputBuffer is not executed
-        // on extra frames. Setting mFinalStatus to ERROR_END_OF_STREAM as
-        // we dont want to return OK and NULL buffer in read.
-        flags |= OMX_BUFFERFLAG_EOS;
-        mNoMoreOutputData = false;
-        mSignalledEOS = true;
-        mFinalStatus = ERROR_END_OF_STREAM;
-#endif
     } else {
         mNoMoreOutputData = false;
     }
@@ -5454,8 +5413,7 @@ status_t QueryCodec(
 #else
     portFormat.nPortIndex = !isEncoder ? 1 : 0;
 #endif
-    for (OMX_U32 index = 0;;index++)  {
-        portFormat.nIndex = index;
+    for (portFormat.nIndex = 0;; ++portFormat.nIndex) {
         err = omx->getParameter(
                 node, OMX_IndexParamVideoPortFormat,
                 &portFormat, sizeof(portFormat));
