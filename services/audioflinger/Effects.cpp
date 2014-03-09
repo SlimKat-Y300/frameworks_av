@@ -653,11 +653,15 @@ status_t AudioFlinger::EffectModule::setEnabled_l(bool enabled)
        LPA output is enabled or disabled.
     */
     sp<EffectChain> chain = mChain.promote();
-    if (effectStateChanged && chain->isForLPATrack()) {
-        sp<ThreadBase> thread = mThread.promote();
-        unlock();//Acquire locks in certain sequence to avoid deadlock
-        thread->effectConfigChanged();
-        lock();
+    if (chain != NULL) {
+       if (effectStateChanged && chain->isForLPATrack()) {
+          sp<ThreadBase> thread = mThread.promote();
+          unlock();//Acquire locks in certain sequence to avoid deadlock
+          thread->effectConfigChanged();
+          lock();
+       }
+    } else {
+        ALOGW("setEnabled_l() cannot promote chain");
     }
 #endif
     return NO_ERROR;
@@ -1985,6 +1989,10 @@ bool AudioFlinger::applyEffectsOn(void *token, int16_t *inBuffer,
             memcpy(outBuffer, inBuffer, size);
         }
     }
+#ifdef SRS_PROCESSING
+   POSTPRO_PATCH_ICS_OUTPROC_DIRECT_SAMPLES(token, AUDIO_FORMAT_PCM_16_BIT, outBuffer, size, mLPASampleRate, mLPANumChannels);
+#endif
+
     return true;
 }
 
