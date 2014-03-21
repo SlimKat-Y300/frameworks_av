@@ -1,7 +1,7 @@
 /*
+** Copyright 2012, The Android Open Source Project
 ** Copyright (c) 2013, The Linux Foundation. All rights reserved.
 ** Not a Contribution.
-** Copyright 2012, The Android Open Source Project
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -2314,7 +2314,6 @@ bool AudioFlinger::PlaybackThread::threadLoop()
                 }
                 releaseWakeLock_l();
                 mWakeLockUids.clear();
-                mActiveTracksGeneration++;
                 ALOGV("wait async completion");
                 mWaitWorkCV.wait(mLock);
                 ALOGV("async completion/wake");
@@ -3811,7 +3810,9 @@ AudioFlinger::PlaybackThread::mixer_state AudioFlinger::DirectOutputThread::prep
                     tracksToRemove->add(track);
                     // indicate to client process that the track was disabled because of underrun;
                     // it will then automatically call start() when data is available
+#if defined(QCOM_HARDWARE) && !defined(QCOM_DIRECTTRACK)
                     android_atomic_or(CBLK_DISABLED, &cblk->mFlags);
+#endif
                 } else if (last) {
                     mixerStatus = MIXER_TRACKS_ENABLED;
                 }
