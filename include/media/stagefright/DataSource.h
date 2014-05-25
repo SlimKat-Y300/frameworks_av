@@ -134,6 +134,8 @@ protected:
 
     sp<Sniffer> mSniffer;
 
+    static void RegisterSniffer_l(SnifferFunc func);
+
     DataSource(const DataSource &);
     DataSource &operator=(const DataSource &);
 };
