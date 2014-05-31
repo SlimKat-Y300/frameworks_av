@@ -36,7 +36,7 @@ namespace android {
 static const int QOMX_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka = 0x7FA30C03;
 static const int OMX_QCOM_COLOR_FormatYVU420SemiPlanar = 0x7FA30C00;
 #endif
-  
+
 static bool runningInEmulator() {
     char prop[PROPERTY_VALUE_MAX];
     return (property_get("ro.kernel.qemu", prop, NULL) > 0);
@@ -93,7 +93,6 @@ SoftwareRenderer::SoftwareRenderer(
 
             // fall through.
         }
-
 #ifdef QCOM_LEGACY_OMX
         case OMX_QCOM_COLOR_FormatYVU420SemiPlanar:
         {

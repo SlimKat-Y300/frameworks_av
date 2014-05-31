@@ -17,7 +17,7 @@ else
         LOCAL_C_INCLUDES += $(TOP)/hardware/qcom/display/libgralloc
 endif
 endif
-        
+
 LOCAL_MODULE:= libstagefright_color_conversion
 
 include $(BUILD_STATIC_LIBRARY)

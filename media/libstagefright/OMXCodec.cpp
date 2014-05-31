@@ -171,9 +171,9 @@ static sp<MediaSource> InstantiateSoftwareDecoder(
 #undef FACTORY_REF
 #undef FACTORY_CREATE
 
-#define CODEC_LOGI(x, ...) ALOGI("[%s] " x, mComponentName, ##__VA_ARGS__)
-#define CODEC_LOGV(x, ...) ALOGV("[%s] " x, mComponentName, ##__VA_ARGS__)
-#define CODEC_LOGE(x, ...) ALOGE("[%s] " x, mComponentName, ##__VA_ARGS__)
+#define CODEC_LOGI(x, ...) ALOGI("[%s] "x, mComponentName, ##__VA_ARGS__)
+#define CODEC_LOGV(x, ...) ALOGV("[%s] "x, mComponentName, ##__VA_ARGS__)
+#define CODEC_LOGE(x, ...) ALOGE("[%s] "x, mComponentName, ##__VA_ARGS__)
 
 struct OMXCodecObserver : public BnOMXObserver {
     OMXCodecObserver() {
@@ -1148,7 +1148,7 @@ status_t OMXCodec::setVideoInputFormat(
     success = success && meta->findInt32(kKeySliceHeight, &sliceHeight);
 #ifdef QCOM_LEGACY_OMX
     CODEC_LOGI("setVideoInputFormat width=%ld, height=%ld", width, height);
-#endif    
+#endif
     CHECK(success);
     CHECK(stride != 0);
 
@@ -1246,7 +1246,7 @@ status_t OMXCodec::setVideoInputFormat(
     video_def->nFrameHeight = height;
 #ifdef QCOM_LEGACY_OMX
     video_def->xFramerate = (frameRate << 16);
-#else    
+#else
     video_def->xFramerate = 0;      // No need for output port
 #endif
     video_def->nBitrate = bitRate;  // Q16 format
@@ -1823,11 +1823,10 @@ OMXCodec::OMXCodec(
       mPaused(false),
       mNativeWindow(
               (!strncmp(componentName, "OMX.google.", 11)
-              || !strncmp(componentName, "OMX.ffmpeg.", 11)
 #ifdef QCOM_LEGACY_OMX
               || !strncmp(componentName, "OMX.qcom",8)
 #endif
-              )
+              || !strncmp(componentName, "OMX.ffmpeg.", 11))
                         ? NULL : nativeWindow),
 #ifdef QCOM_HARDWARE
       mNumBFrames(0),
@@ -2349,15 +2348,6 @@ status_t OMXCodec::allocateOutputBuffersFromNativeWindow() {
         return err;
     }
 
-#ifdef QCOM_HARDWARE
-    err = mNativeWindow.get()->perform(mNativeWindow.get(),
-                             NATIVE_WINDOW_SET_BUFFERS_SIZE, def.nBufferSize);
-    if (err != 0) {
-        ALOGE("native_window_set_buffers_size failed: %s (%d)", strerror(-err),
-                -err);
-        return err;
-    }
-#endif
     CODEC_LOGV("allocating %lu buffers from a native window of size %lu on "
             "output port", def.nBufferCountActual, def.nBufferSize);
 
@@ -3262,35 +3252,14 @@ void OMXCodec::onStateChange(OMX_STATETYPE newState) {
                 mPortStatus[kPortIndexInput] = ENABLED;
                 mPortStatus[kPortIndexOutput] = ENABLED;
 
-#ifdef QCOM_HARDWARE
-                if (mNativeWindow != NULL) {
-                    /*
-                     * reset buffer size field with SurfaceTexture
-                     * back to 0. This will ensure proper size
-                     * buffers are allocated if the same SurfaceTexture
-                     * is re-used in a different decode session
-                     */
-                    int err =
-                        mNativeWindow.get()->perform(mNativeWindow.get(),
-                                                     NATIVE_WINDOW_SET_BUFFERS_SIZE,
-                                                     0);
-                    if (err != 0) {
-                        ALOGE("set_buffers_size failed: %s (%d)", strerror(-err),
-                             -err);
-                    }
-#endif
-
-                    if ((mFlags & kEnableGrallocUsageProtected) &&
+                if ((mFlags & kEnableGrallocUsageProtected) &&
                         mNativeWindow != NULL) {
-                        // We push enough 1x1 blank buffers to ensure that one of
-                        // them has made it to the display.  This allows the OMX
-                        // component teardown to zero out any protected buffers
-                        // without the risk of scanning out one of those buffers.
-                        pushBlankBuffersToNativeWindow();
-                    }
-#ifdef QCOM_HARDWARE
+                    // We push enough 1x1 blank buffers to ensure that one of
+                    // them has made it to the display.  This allows the OMX
+                    // component teardown to zero out any protected buffers
+                    // without the risk of scanning out one of those buffers.
+                    pushBlankBuffersToNativeWindow();
                 }
-#endif
 
                 setState(IDLE_TO_LOADED);
             }
@@ -3510,15 +3479,7 @@ void OMXCodec::fillOutputBuffers() {
     // all output buffers and we already signalled end-of-input-stream,
     // the end-of-output-stream is implied.
 
-    // NOTE: Thumbnail mode needs a call to fillOutputBuffer in order
-    // to get the decoded frame from the component. Currently,
-    // thumbnail mode calls emptyBuffer with an EOS flag on its first
-    // frame and sets mSignalledEOS to true, so without the check for
-    // !mThumbnailMode, fillOutputBuffer will never be called.
-#ifdef QCOM_HARDWARE
-    if(!ExtendedUtils::checkIsThumbNailMode(mFlags, mComponentName)) {
-#endif
-        if (mSignalledEOS
+    if (mSignalledEOS
             && countBuffersWeOwn(mPortBuffers[kPortIndexInput])
                 == mPortBuffers[kPortIndexInput].size()
             && countBuffersWeOwn(mPortBuffers[kPortIndexOutput])
@@ -3527,10 +3488,7 @@ void OMXCodec::fillOutputBuffers() {
         mBufferFilled.signal();
 
             return;
-        }
-#ifdef QCOM_HARDWARE
     }
-#endif
 
     Vector<BufferInfo> *buffers = &mPortBuffers[kPortIndexOutput];
     for (size_t i = 0; i < buffers->size(); ++i) {
