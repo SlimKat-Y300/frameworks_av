@@ -38,6 +38,10 @@
 #include <media/stagefright/ExtendedCodec.h>
 #endif
 
+#ifdef ENABLE_AV_ENHANCEMENTS
+#include <QCMetaData.h>
+#endif
+
 #include "include/AwesomePlayer.h"
 
 namespace android {
@@ -169,6 +173,11 @@ status_t AudioPlayer::start(bool sourceAlreadyStarted) {
 
     audio_format_t audioFormat = AUDIO_FORMAT_PCM_16_BIT;
 
+    int32_t bitWidth = 16;
+#ifdef ENABLE_AV_ENHANCEMENTS
+    format->findInt32(kKeySampleBits, &bitWidth);
+#endif
+
     if (useOffload()) {
         if (mapMimeToAudioFormat(audioFormat, mime) != OK) {
             ALOGE("Couldn't map mime type \"%s\" to a valid AudioSystem::audio_format", mime);
@@ -176,7 +185,10 @@ status_t AudioPlayer::start(bool sourceAlreadyStarted) {
         } else {
 #ifdef QCOM_HARDWARE
             // Override audio format for PCM offload
-            if (audioFormat == AUDIO_FORMAT_PCM_16_BIT) {
+            if (audioFormat == AUDIO_FORMAT_PCM_24_BIT || bitWidth == 24) {
+                ALOGI("24-bit PCM offload enabled");
+                audioFormat = AUDIO_FORMAT_PCM_24_BIT_OFFLOAD;
+            } else if (audioFormat == AUDIO_FORMAT_PCM_16_BIT) {
                 audioFormat = AUDIO_FORMAT_PCM_16_BIT_OFFLOAD;
             }
 #endif
@@ -212,6 +224,9 @@ status_t AudioPlayer::start(bool sourceAlreadyStarted) {
             offloadInfo.bit_rate = avgBitRate;
             offloadInfo.has_video = ((mCreateFlags & HAS_VIDEO) != 0);
             offloadInfo.is_streaming = ((mCreateFlags & IS_STREAMING) != 0);
+#ifdef ENABLE_AV_ENHANCEMENTS
+            offloadInfo.bit_width = bitWidth;
+#endif
         }
 
         status_t err = mAudioSink->open(
@@ -846,28 +861,37 @@ int64_t AudioPlayer::getRealTimeUsLocked() const {
 int64_t AudioPlayer::getOutputPlayPositionUs_l()
 {
     uint32_t playedSamples = 0;
+    status_t err = NO_ERROR;
+    int64_t renderedDuration = 0;
     uint32_t sampleRate = 0;
+
     if (mAudioSink != NULL) {
-        mAudioSink->getPosition(&playedSamples);
+        err = mAudioSink->getPosition(&playedSamples);
         sampleRate = mAudioSink->getSampleRate();
     } else if (mAudioTrack != NULL) {
-        mAudioTrack->getPosition(&playedSamples);
+        err = mAudioTrack->getPosition(&playedSamples);
         sampleRate = mAudioTrack->getSampleRate();
     }
+
     if (sampleRate != 0) {
         mSampleRate = sampleRate;
     }
-
-    int64_t playedUs;
-    if (mSampleRate != 0) {
-        playedUs = (static_cast<int64_t>(playedSamples) * 1000000 ) / mSampleRate;
+    // Send last known played postion if query to track fails
+    if ((err != NO_ERROR) && (mPositionTimeRealUs >= 0)) {
+        ALOGV("getOutputPlayPositionUs_l %lld", renderedDuration);
+        renderedDuration = mPositionTimeRealUs;
     } else {
-        playedUs = 0;
+        int64_t playedUs = 0;
+
+        if (mSampleRate != 0) {
+            playedUs = (static_cast<int64_t>(playedSamples) * 1000000 ) / mSampleRate;
+        }
+        // HAL position is relative to the first buffer we sent at mStartPosUs
+        renderedDuration = mStartPosUs + playedUs;
     }
 
-    // HAL position is relative to the first buffer we sent at mStartPosUs
-    const int64_t renderedDuration = mStartPosUs + playedUs;
     ALOGV("getOutputPlayPositionUs_l %lld", renderedDuration);
+
     return renderedDuration;
 }
 

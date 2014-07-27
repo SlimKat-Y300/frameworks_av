@@ -17,6 +17,7 @@
 //#define LOG_NDEBUG 0
 #define LOG_TAG "WAVExtractor"
 #include <utils/Log.h>
+#include <cutils/properties.h>
 
 #include "include/WAVExtractor.h"
 
@@ -29,6 +30,10 @@
 #include <media/stagefright/MetaData.h>
 #include <utils/String8.h>
 #include <cutils/bitops.h>
+
+#ifdef ENABLE_AV_ENHANCEMENTS
+#include <QCMetaData.h>
+#endif
 
 #define CHANNEL_MASK_USE_CHANNEL_ORDER 0
 
@@ -67,6 +72,15 @@ struct WAVSource : public MediaSource {
 
     virtual status_t read(
             MediaBuffer **buffer, const ReadOptions *options = NULL);
+
+    bool use24BitOutput() {
+        int32_t bitWidth = 16;
+#ifdef ENABLE_AV_ENHANCEMENTS
+        if (getFormat() != 0)
+            getFormat()->findInt32(kKeySampleBits, &bitWidth);
+#endif
+        return bitWidth == 24;
+    }
 
 protected:
     virtual ~WAVSource();
@@ -284,6 +298,9 @@ status_t WAVExtractor::init() {
                     case WAVE_FORMAT_PCM:
                         mTrackMeta->setCString(
                                 kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_RAW);
+#ifdef ENABLE_AV_ENHANCEMENTS
+                        mTrackMeta->setInt32(kKeySampleBits, mBitsPerSample);
+#endif
                         break;
                     case WAVE_FORMAT_ALAW:
                         mTrackMeta->setCString(
@@ -483,7 +500,7 @@ status_t WAVSource::read(
 
             buffer->release();
             buffer = tmp;
-        } else if (mBitsPerSample == 24) {
+        } else if (mBitsPerSample == 24 && !use24BitOutput()) {
             // Convert 24-bit signed samples to 16-bit signed.
 
             const uint8_t *src =

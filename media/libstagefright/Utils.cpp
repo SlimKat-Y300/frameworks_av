@@ -39,6 +39,8 @@
 #endif
 #ifdef ENABLE_AV_ENHANCEMENTS
 #include <QCMediaDefs.h>
+#include <QCMetaData.h>
+#include "include/ExtendedUtils.h"
 #endif
 
 namespace android {
@@ -449,17 +451,20 @@ void convertMessageToMetaData(const sp<AMessage> &msg, sp<MetaData> &meta) {
     sp<ABuffer> csd0;
     if (msg->findBuffer("csd-0", &csd0)) {
         if (mime.startsWith("video/")) { // do we need to be stricter than this?
-            sp<ABuffer> csd1;
-            if (msg->findBuffer("csd-1", &csd1)) {
-                char avcc[1024]; // that oughta be enough, right?
-                size_t outsize = reassembleAVCC(csd0, csd1, avcc);
-                meta->setData(kKeyAVCC, kKeyAVCC, avcc, outsize);
-            } else {
+            if (!strcasecmp(mime.c_str(), MEDIA_MIMETYPE_VIDEO_AVC)) {
+                sp<ABuffer> csd1;
+                if (msg->findBuffer("csd-1", &csd1)) {
+                    char avcc[1024]; // that oughta be enough, right?
+                    size_t outsize = reassembleAVCC(csd0, csd1, avcc);
+                    meta->setData(kKeyAVCC, kKeyAVCC, avcc, outsize);
+                }
+            } else if (!strcasecmp(mime.c_str(), MEDIA_MIMETYPE_VIDEO_MPEG4)) {
                 int csd0size = csd0->size();
                 char esds[csd0size + 31];
                 reassembleESDS(csd0, esds);
                 meta->setData(kKeyESDS, kKeyESDS, esds, sizeof(esds));
             }
+
         } else if (mime.startsWith("audio/")) {
             int csd0size = csd0->size();
             char esds[csd0size + 31];
@@ -544,6 +549,7 @@ static const struct mime_conv_t mimeLookup[] = {
     { MEDIA_MIMETYPE_AUDIO_AAC,         AUDIO_FORMAT_AAC },
     { MEDIA_MIMETYPE_AUDIO_VORBIS,      AUDIO_FORMAT_VORBIS },
 #ifdef ENABLE_AV_ENHANCEMENTS
+    { MEDIA_MIMETYPE_AUDIO_FLAC,        AUDIO_FORMAT_FLAC },
     { MEDIA_MIMETYPE_AUDIO_AC3,         AUDIO_FORMAT_AC3 },
     { MEDIA_MIMETYPE_AUDIO_AMR_WB_PLUS, AUDIO_FORMAT_AMR_WB_PLUS },
     { MEDIA_MIMETYPE_AUDIO_DTS,         AUDIO_FORMAT_DTS },
@@ -596,7 +602,10 @@ bool canOffloadStream(const sp<MetaData>& meta, bool hasVideo, const sp<MetaData
     } else {
 #ifdef QCOM_HARDWARE
         // Override audio format for PCM offload
-        if (info.format == AUDIO_FORMAT_PCM_16_BIT) {
+        if (info.format == AUDIO_FORMAT_PCM_24_BIT || info.bit_width == 24) {
+            ALOGD("24-bit PCM offload enabled");
+            info.format = AUDIO_FORMAT_PCM_24_BIT_OFFLOAD;
+        } else if (info.format == AUDIO_FORMAT_PCM_16_BIT) {
             info.format = AUDIO_FORMAT_PCM_16_BIT_OFFLOAD;
         }
 #endif
@@ -652,6 +661,13 @@ bool canOffloadStream(const sp<MetaData>& meta, bool hasVideo, const sp<MetaData
      }
     info.bit_rate = brate;
 
+    int32_t bitWidth = 16;
+#ifdef ENABLE_AV_ENHANCEMENTS
+    if (!meta->findInt32(kKeySampleBits, &bitWidth)) {
+        ALOGV("bits per sample not set, using default %d", bitWidth);
+    }
+#endif
+    info.bit_width = bitWidth;
 
     info.stream_type = streamType;
     info.has_video = hasVideo;
@@ -659,7 +675,13 @@ bool canOffloadStream(const sp<MetaData>& meta, bool hasVideo, const sp<MetaData
 
     // Check if offload is possible for given format, stream type, sample rate,
     // bit rate, duration, video and streaming
-    return AudioSystem::isOffloadSupported(info);
+    bool canOffload = AudioSystem::isOffloadSupported(info);
+
+#ifdef ENABLE_AV_ENHANCEMENTS
+    ExtendedUtils::updateOutputBitWidth(meta, canOffload);
+#endif
+
+    return canOffload;
 }
 
 void printFileName(int fd)

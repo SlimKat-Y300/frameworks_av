@@ -196,6 +196,16 @@ AudioTrack::~AudioTrack()
         mAudioTrack.clear();
         IPCThreadState::self()->flushCommands();
         AudioSystem::releaseAudioSessionId(mSessionId);
+        if (isOffloaded()) {
+            char propValue[PROPERTY_VALUE_MAX];
+            bool prop_enabled = false;
+
+            if (property_get("audio.offload.multiple.enabled", propValue, NULL))
+                prop_enabled = atoi(propValue) || !strncmp("true", propValue, 4);
+
+            if (prop_enabled)
+                AudioSystem::releaseOutput(mOutput);
+        }
 #endif
     }
 }
@@ -987,10 +997,21 @@ status_t AudioTrack::getPosition(uint32_t *position) const
     AutoMutex lock(mLock);
     if (isOffloaded()) {
         uint32_t dspFrames = 0;
+        status_t status;
+
+        if ((mState == STATE_PAUSED) || (mState == STATE_PAUSED_STOPPING)) {
+            ALOGV("getPosition called in paused state, return cached position %u", mPausedPosition);
+            *position = mPausedPosition;
+            return NO_ERROR;
+        }
 
         if (mOutput != 0) {
             uint32_t halFrames;
-            AudioSystem::getRenderPosition(mOutput, &halFrames, &dspFrames);
+            status = AudioSystem::getRenderPosition(mOutput, &halFrames, &dspFrames);
+            if (status != NO_ERROR) {
+                ALOGW("failed to getRenderPosition for offload session");
+                return INVALID_OPERATION;
+            }
         }
         *position = dspFrames;
     } else {
