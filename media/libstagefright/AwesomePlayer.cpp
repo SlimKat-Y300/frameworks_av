@@ -1084,6 +1084,9 @@ status_t AwesomePlayer::play_l() {
             }
 
             if (err != OK) {
+                mAudioSource.clear();
+                mOmxSource.clear();
+
                 delete mAudioPlayer;
                 mAudioPlayer = NULL;
 
@@ -1157,6 +1160,7 @@ status_t AwesomePlayer::fallbackToSWDecoder() {
     if (!(mFlags & AUDIOPLAYER_STARTED)) {
         mAudioSource->stop();
     }
+    mAudioSource.clear();
     modifyFlags((AUDIO_RUNNING | AUDIOPLAYER_STARTED), CLEAR);
     mOffloadAudio = false;
 #ifdef ENABLE_AV_ENHANCEMENTS
@@ -1166,11 +1170,7 @@ status_t AwesomePlayer::fallbackToSWDecoder() {
 
     mAudioSource = mOmxSource;
     if (mAudioSource != NULL) {
-        err = mAudioSource->start();
-
-        if (err != OK) {
-            mAudioSource.clear();
-        } else {
+        if ((err = mAudioSource->start()) == OK) {
             mSeekNotificationSent = true;
             if (mExtractorFlags & MediaExtractor::CAN_SEEK) {
                 seekTo_l(curTimeUs);
@@ -2341,6 +2341,9 @@ void AwesomePlayer::onVideoEvent() {
             ALOGE("Failed to fallback to SW decoder err = %d", err);
             notifyListener_l(MEDIA_ERROR, MEDIA_ERROR_UNKNOWN, err);
 
+            mAudioSource.clear();
+            mOmxSource.clear();
+
             delete mAudioPlayer;
             mAudioPlayer = NULL;
 
@@ -3427,8 +3430,20 @@ bool AwesomePlayer::isWidevineContent() const {
 
 status_t AwesomePlayer::dump(int fd, const Vector<String16> &args) const {
     Mutex::Autolock autoLock(mStatsLock);
+    int dfd = dup(fd);
 
-    FILE *out = fdopen(dup(fd), "w");
+    if (dfd < 0) {
+        ALOGE("dump: failed to dup file descriptor");
+        return -errno;
+    }
+
+    FILE *out = fdopen(dfd, "w");
+
+    if (!out) {
+        ALOGE("dump: failed to open file");
+        close(dfd);
+        return -ENOMEM;
+    }
 
     fprintf(out, " AwesomePlayer\n");
     if (mStats.mFd < 0) {
