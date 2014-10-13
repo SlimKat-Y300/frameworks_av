@@ -1289,8 +1289,10 @@ sp<AudioFlinger::PlaybackThread::Track> AudioFlinger::PlaybackThread::createTrac
             // mono or stereo
             ( (channelMask == AUDIO_CHANNEL_OUT_MONO) ||
               (channelMask == AUDIO_CHANNEL_OUT_STEREO) ) &&
+#ifdef NATIVE_FAST_TRACKS_ONLY
             // hardware sample rate
             (sampleRate == mSampleRate) &&
+#endif
             // normal mixer has an associated fast mixer
             hasFastMixer() &&
             // there are sufficient fast track slots available
@@ -1362,8 +1364,12 @@ sp<AudioFlinger::PlaybackThread::Track> AudioFlinger::PlaybackThread::createTrac
                 lStatus = BAD_VALUE;
                 goto Exit;
         }
-        // Resampler implementation limits input sampling rate to 2 x output sampling rate.
-        if (sampleRate > mSampleRate*2) {
+        // Resampler implementation limits input sampling rate to 2/4 x output sampling rate.
+#ifdef QTI_RESAMPLER
+        if (sampleRate > mSampleRate * 4) {
+#else
+        if (sampleRate > mSampleRate * 2) {
+#endif
             ALOGE("Sample rate out of range: %u mSampleRate %u", sampleRate, mSampleRate);
             lStatus = BAD_VALUE;
             goto Exit;
@@ -2292,12 +2298,12 @@ bool AudioFlinger::PlaybackThread::threadLoop()
     POSTPRO_PATCH_PARAMS_SET(bt_param);
     if (mType == MIXER) {
         POSTPRO_PATCH_OUTPROC_PLAY_INIT(this, myName);
-    } else if (mType == DUPLICATING) {
-        POSTPRO_PATCH_OUTPROC_DUPE_INIT(this, myName);
     } else if (mType == OFFLOAD) {
         POSTPRO_PATCH_OUTPROC_DIRECT_INIT(this, myName);
+        POSTPRO_PATCH_OUTPROC_PLAY_ROUTE_BY_VALUE(this, mOutDevice);
     } else if (mType == DIRECT) {
         POSTPRO_PATCH_OUTPROC_DIRECT_INIT(this, myName);
+        POSTPRO_PATCH_OUTPROC_PLAY_ROUTE_BY_VALUE(this, mOutDevice);
     }
 #endif
 
@@ -2476,8 +2482,6 @@ bool AudioFlinger::PlaybackThread::threadLoop()
 #ifdef SRS_PROCESSING
                 if (mType == MIXER && mMixerStatus == MIXER_TRACKS_READY) {
                     POSTPRO_PATCH_OUTPROC_PLAY_SAMPLES(this, mFormat, mMixBuffer, mixBufferSize, mSampleRate, mChannelCount);
-                } else if (mType == DUPLICATING) {
-                    POSTPRO_PATCH_OUTPROC_DUPE_SAMPLES(this, mFormat, mMixBuffer, mixBufferSize, mSampleRate, mChannelCount);
                 } /* else if (mType == OFFLOAD) {
                     POSTPRO_PATCH_OUTPROC_DIRECT_SAMPLES(this, mFormat, mMixBuffer, mixBufferSize, mSampleRate, mChannelCount);
                 } else if (mType == DIRECT) {
@@ -2552,8 +2556,6 @@ if (mType == MIXER) {
 #ifdef SRS_PROCESSING
     if (mType == MIXER) {
         POSTPRO_PATCH_OUTPROC_PLAY_EXIT(this, myName);
-    } else if (mType == DUPLICATING) {
-        POSTPRO_PATCH_OUTPROC_DUPE_EXIT(this, myName);
     } else if (mType == OFFLOAD) {
         POSTPRO_PATCH_OUTPROC_DIRECT_EXIT(this, myName);
     } else if (mType == DIRECT) {
@@ -3337,8 +3339,12 @@ AudioFlinger::PlaybackThread::mixer_state AudioFlinger::MixerThread::prepareTrac
                 name,
                 AudioMixer::TRACK,
                 AudioMixer::CHANNEL_MASK, (void *)track->channelMask());
-            // limit track sample rate to 2 x output sample rate, which changes at re-configuration
+            // limit track sample rate to 2/4 x output sample rate, which changes at re-configuration
+#ifdef QTI_RESAMPLER
+            uint32_t maxSampleRate = mSampleRate * 4;
+#else
             uint32_t maxSampleRate = mSampleRate * 2;
+#endif
             uint32_t reqSampleRate = track->mAudioTrackServerProxy->getSampleRate();
             if (reqSampleRate == 0) {
                 reqSampleRate = mSampleRate;
