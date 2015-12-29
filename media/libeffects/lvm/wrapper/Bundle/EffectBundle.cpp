@@ -2839,6 +2839,7 @@ int Effect_command(effect_handle_t  self,
                                                             p->data,
                                                             (size_t  *)&p->vsize,
                                                             p->data + voffset);
+
                 //ALOGV("\tBassBoost_command EFFECT_CMD_GET_PARAM "
                 //        "*pCmdData %d, *replySize %d, *pReplyData %d ",
                 //        *(int32_t *)((char *)pCmdData + sizeof(effect_param_t)),
@@ -2966,7 +2967,7 @@ int Effect_command(effect_handle_t  self,
                //        *replySize,
                //        *(int16_t *)((char *)pCmdData + sizeof(effect_param_t) + sizeof(int32_t)));
 
-                if (pCmdData == NULL || cmdSize < (sizeof(effect_param_t) + sizeof(int32_t)) ||
+                if (pCmdData == NULL || cmdSize < (int)(sizeof(effect_param_t) + sizeof(int32_t)) ||
                         pReplyData == NULL || replySize == NULL || *replySize != sizeof(int32_t)) {
                     ALOGV("\tLVM_ERROR : Equalizer_command cmdCode Case: "
                             "EFFECT_CMD_SET_PARAM: ERROR");

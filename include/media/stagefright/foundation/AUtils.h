@@ -22,7 +22,7 @@
 
 template<class T>
 void ENSURE_UNSIGNED_TYPE() {
-    T TYPE_MUST_BE_UNSIGNED[(T)-1 < 0 ? -1 : 0];
+    T TYPE_MUST_BE_UNSIGNED[(T)-1 < 0 ? -1 : 0] __unused;
 }
 
 // needle is in range [hayStart, hayStart + haySize)
@@ -40,6 +40,13 @@ inline static bool isInRange(
     return isInRange(hayStart, haySize, needleStart)
             && (T)(needleStart + needleSize) >= needleStart
             && (U)(needleStart + needleSize - hayStart) <= haySize;
+}
+
+/* T must be integer type, period must be positive */
+template<class T>
+inline static T periodicError(const T &val, const T &period) {
+    T err = abs(val) % period;
+    return (err < (period / 2)) ? err : (period - err);
 }
 
 #endif  // A_UTILS_H_

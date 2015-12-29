@@ -1463,7 +1463,7 @@ int PreProcessingFx_Command(effect_handle_t  self,
         } break;
 
         case EFFECT_CMD_SET_PARAM:{
-            if (pCmdData == NULL||
+            if (pCmdData == NULL ||
                     cmdSize < sizeof(effect_param_t) ||
                     pReplyData == NULL || replySize == NULL ||
                     *replySize != sizeof(int32_t)){
